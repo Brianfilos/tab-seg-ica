@@ -12,14 +12,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-EXCEL_FILE = "MATRIZ_ICA_DEFINITIVA 22-11-2025.xlsx"  # <--- AJÚSTALO SI CAMBIA EL NOMBRE
+EXCEL_FILE = "MATRIZ_ICA_DEFINITIVA 22-11-2025.xlsx"  # AJUSTA SI CAMBIA EL NOMBRE
 
 LOGO_LEGAL_PATH = "logo_legal.png"
 LOGO_MUNICIPIO_PATH = "logo_segovia.png"
 
-COL_VIGENTE = "VL IMPUESTO VIGENTE"
-COL_PROP2025 = "valor impuesto propuesta3"          # propuesta 2025
-COL_PROP_ANT = "valor impuesto propuesta anterior"  # propuesta anterior
+# Columnas principales de IMPUESTO (no recaudo total)
+COL_VIGENTE = "valor impuesto original"
+COL_PROP2025 = "valor impuesto propuesta3"
+COL_PROP_ANT = "valor impuesto propuesta anterior"
+
+# Columnas tarifarias
 COL_TARIFA_ORIG = "TARIFA ORIGINAL"
 COL_TARIFA_2025 = "PROPUESTA 2025"
 COL_TARIFA_ANT = "PROPUESTA ANT"
@@ -54,11 +57,6 @@ st.markdown(
     border-top: 1px solid #dddddd;
     text-align: justify;
 }
-.metric-container > div {
-    background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 10px;
-}
 </style>
 """,
     unsafe_allow_html=True,
@@ -66,21 +64,41 @@ st.markdown(
 
 
 # --------------------------------------------------
-# 2. Carga de datos
+# 2. Carga y utilidades numéricas
 # --------------------------------------------------
 @st.cache_data(show_spinner=True)
 def load_data(path: str) -> pd.DataFrame:
     df = pd.read_excel(path)
-    # Limpieza ligera de nombres de columnas
     df.columns = [str(c).strip() for c in df.columns]
     return df
+
+
+def to_num(series: pd.Series) -> pd.Series:
+    """
+    Convierte una serie a numérico, soportando formato latino:
+    1.234.567,89  -> 1234567.89
+    """
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce")
+
+    s = series.astype(str).str.replace(" ", "", regex=False)
+    s = s.str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+    return pd.to_numeric(s, errors="coerce")
+
+
+def safe_sum(df: pd.DataFrame, col: str) -> float:
+    if col not in df.columns:
+        return np.nan
+    return to_num(df[col]).fillna(0).sum()
 
 
 try:
     df_raw = load_data(EXCEL_FILE)
 except Exception as e:
-    st.error(f"No se pudo cargar el archivo '{EXCEL_FILE}'. "
-             f"Verifica que el nombre y la ubicación sean correctos.\n\nDetalle: {e}")
+    st.error(
+        f"No se pudo cargar el archivo '{EXCEL_FILE}'. "
+        f"Verifica que el nombre y la ubicación sean correctos.\n\nDetalle: {e}"
+    )
     st.stop()
 
 df = df_raw.copy()
@@ -139,35 +157,30 @@ st.markdown(f'<p class="context-text">{contexto}</p>', unsafe_allow_html=True)
 # --------------------------------------------------
 st.sidebar.title("Filtros")
 
-# AÑO
 if "AÑO" in df.columns:
     years = sorted(df["AÑO"].dropna().unique())
     selected_years = st.sidebar.multiselect("Año de declaración", years, default=years)
 else:
     selected_years = None
 
-# TIPO ACT
 if "TIPO ACT" in df.columns:
     tipos_act = sorted(df["TIPO ACT"].dropna().unique())
     selected_tipo = st.sidebar.multiselect("Tipo de actividad", tipos_act, default=tipos_act)
 else:
     selected_tipo = None
 
-# TAMAÑO EMPRESA
 if "TAMAÑO EMPRESA" in df.columns:
     tamanos = sorted(df["TAMAÑO EMPRESA"].dropna().unique())
     selected_tamano = st.sidebar.multiselect("Tamaño de empresa", tamanos, default=tamanos)
 else:
     selected_tamano = None
 
-# GRUPOS Y SUB
 if "GRUPOS Y SUB" in df.columns:
     grupos = sorted(df["GRUPOS Y SUB"].dropna().unique())
     selected_grupos = st.sidebar.multiselect("Grupo CIIU (primeros 2 dígitos)", grupos, default=grupos)
 else:
     selected_grupos = None
 
-# Filtro por conclusión (si existe)
 if "CONCLUSION" in df.columns:
     conclusiones = sorted(df["CONCLUSION"].dropna().unique())
     selected_conclusion = st.sidebar.multiselect("Conclusión (aumenta/disminuye/igual)",
@@ -175,58 +188,47 @@ if "CONCLUSION" in df.columns:
 else:
     selected_conclusion = None
 
-
-# Aplicar filtros
 mask = pd.Series(True, index=df.index)
 
-if selected_years is not None and len(selected_years) > 0:
+if selected_years:
     mask &= df["AÑO"].isin(selected_years)
-
-if selected_tipo is not None and len(selected_tipo) > 0:
+if selected_tipo:
     mask &= df["TIPO ACT"].isin(selected_tipo)
-
-if selected_tamano is not None and len(selected_tamano) > 0:
+if selected_tamano:
     mask &= df["TAMAÑO EMPRESA"].isin(selected_tamano)
-
-if selected_grupos is not None and len(selected_grupos) > 0:
+if selected_grupos:
     mask &= df["GRUPOS Y SUB"].isin(selected_grupos)
-
-if selected_conclusion is not None and len(selected_conclusion) > 0:
+if selected_conclusion:
     mask &= df["CONCLUSION"].isin(selected_conclusion)
 
 df_filt = df[mask].copy()
-
 st.sidebar.markdown("---")
 st.sidebar.write(f"Registros filtrados: **{df_filt.shape[0]}**")
 
 
 # --------------------------------------------------
-# 5. KPIs principales
+# 5. KPIs de IMPUESTO (solo valor de impuesto)
 # --------------------------------------------------
-def safe_sum(dataframe: pd.DataFrame, col: str) -> float:
-    if col not in dataframe.columns:
-        return np.nan
-    return pd.to_numeric(dataframe[col], errors="coerce").fillna(0).sum()
+total_imp_vigente = safe_sum(df_filt, COL_VIGENTE)
+total_imp_prop_2025 = safe_sum(df_filt, COL_PROP2025)
+total_imp_prop_ant = safe_sum(df_filt, COL_PROP_ANT)
 
-
-total_vigente = safe_sum(df_filt, COL_VIGENTE)
-total_prop_2025 = safe_sum(df_filt, COL_PROP2025)
-total_prop_ant = safe_sum(df_filt, COL_PROP_ANT)
-
-var_abs = total_prop_2025 - total_vigente
-var_pct = (var_abs / total_vigente * 100) if total_vigente != 0 else np.nan
+var_abs = total_imp_prop_2025 - total_imp_vigente
+var_pct = (var_abs / total_imp_vigente * 100) if total_imp_vigente != 0 else np.nan
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Recaudo Vigente", f"${total_vigente:,.0f}")
+    st.metric("Recaudo de Impuesto Vigente", f"${total_imp_vigente:,.0f}")
 
 with col2:
-    st.metric("Recaudo Propuesta 2025", f"${total_prop_2025:,.0f}",
-              delta=f"{var_pct:.2f} %", delta_color="inverse")
+    st.metric("Recaudo de Impuesto Propuesta 2025",
+              f"${total_imp_prop_2025:,.0f}",
+              delta=f"{var_pct:.2f} %",
+              delta_color="inverse")
 
 with col3:
-    st.metric("Recaudo Propuesta Anterior", f"${total_prop_ant:,.0f}")
+    st.metric("Recaudo de Impuesto Propuesta Anterior", f"${total_imp_prop_ant:,.0f}")
 
 with col4:
     if "CONCLUSION" in df_filt.columns:
@@ -239,32 +241,68 @@ with col4:
 
 
 # --------------------------------------------------
-# 6. Gráficos principales
+# 6. Recaudo TOTAL (impuesto + otros componentes)
 # --------------------------------------------------
-st.markdown("## Comportamiento del recaudo por escenario")
+st.markdown("## Recaudo Total Vigente y Propuesta 2025 (todos los componentes)")
 
-# Gráfico de barras: total por escenario
-escenarios_data = {
-    "Escenario": ["Vigente", "Propuesta 2025", "Propuesta anterior"],
-    "Recaudo": [total_vigente, total_prop_2025, total_prop_ant],
-}
-df_escenarios = pd.DataFrame(escenarios_data)
+# Columnas de recaudo vigente
+columnas_recaudo_vigente = [
+    COL_VIGENTE,
+    "AVISOS Y TABLEROS",
+    "SOBRETASA BOMBERIL",
+    "RETENCIONES",
+    "AUTORETENCIONES",
+    "SANCIONES",
+    "VALOR A PAGAR",
+]
+
+col_vig_exist = [c for c in columnas_recaudo_vigente if c in df_filt.columns]
+recaudo_total_vigente = to_num(df_filt[col_vig_exist]).fillna(0).sum().sum()
+
+# Columnas de recaudo propuesta 2025
+columnas_recaudo_prop2025 = [
+    COL_PROP2025,
+    "AVISOS Y TABLEROS PROPUESTA2025",
+    "SOBRETASA BOMBERIL PROPUESTA2025",
+    # agrega aquí otras columnas de propuesta si las tienes (retenciones, etc.)
+]
+
+col_prop_exist = [c for c in columnas_recaudo_prop2025 if c in df_filt.columns]
+recaudo_total_prop2025 = to_num(df_filt[col_prop_exist]).fillna(0).sum().sum()
+
+colt1, colt2 = st.columns(2)
+with colt1:
+    st.metric("Recaudo Total Vigente", f"${recaudo_total_vigente:,.0f}")
+with colt2:
+    st.metric("Recaudo Total Propuesta 2025", f"${recaudo_total_prop2025:,.0f}")
+
+
+# --------------------------------------------------
+# 7. Gráfico de IMPUESTO por escenario
+# --------------------------------------------------
+st.markdown("## Comportamiento del impuesto por escenario")
+
+df_escenarios = pd.DataFrame(
+    {
+        "Escenario": ["Vigente", "Propuesta 2025", "Propuesta anterior"],
+        "Impuesto": [total_imp_vigente, total_imp_prop_2025, total_imp_prop_ant],
+    }
+)
 
 fig_escenarios = px.bar(
     df_escenarios,
     x="Escenario",
-    y="Recaudo",
-    text="Recaudo",
-    title="Recaudo total por escenario",
+    y="Impuesto",
+    text="Impuesto",
+    title="Impuesto total por escenario (sin otros componentes)",
 )
 fig_escenarios.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-fig_escenarios.update_layout(yaxis_title="Valor ($)", xaxis_title="", uniformtext_minsize=8)
-
+fig_escenarios.update_layout(yaxis_title="Valor ($)", xaxis_title="")
 st.plotly_chart(fig_escenarios, use_container_width=True)
 
 
 # --------------------------------------------------
-# 7. Distribución de aumento / disminución
+# 8. Distribución de aumento / disminución
 # --------------------------------------------------
 if "CONCLUSION" in df_filt.columns:
     st.markdown("## Distribución de contribuyentes según conclusión")
@@ -284,19 +322,16 @@ if "CONCLUSION" in df_filt.columns:
 
 
 # --------------------------------------------------
-# 8. Top actividades por variación del impuesto
+# 9. Top actividades por variación del impuesto
 # --------------------------------------------------
 st.markdown("## Actividades con mayor variación del impuesto (Propuesta 2025 vs Vigente)")
 
 if COL_VIGENTE in df_filt.columns and COL_PROP2025 in df_filt.columns:
     df_var = df_filt.copy()
-    df_var["DIF_IMP_ABS"] = pd.to_numeric(df_var[COL_PROP2025], errors="coerce") - \
-                             pd.to_numeric(df_var[COL_VIGENTE], errors="coerce")
+    df_var["DIF_IMP_ABS"] = to_num(df_var[COL_PROP2025]) - to_num(df_var[COL_VIGENTE])
 
-    # Top 15 en términos absolutos (negativos = más reducción)
     df_var_top = df_var.sort_values("DIF_IMP_ABS").head(15)
 
-    # Etiqueta amigable
     if "DESCRIPCION" in df_var_top.columns:
         df_var_top["Etiqueta"] = df_var_top["CIIU"].astype(str) + " - " + df_var_top["DESCRIPCION"].astype(str)
     else:
@@ -316,7 +351,7 @@ else:
 
 
 # --------------------------------------------------
-# 9. Esquema tarifario por tamaño empresarial
+# 10. Esquema tarifario por tamaño empresarial
 # --------------------------------------------------
 st.markdown("## Esquema tarifario por tamaño empresarial")
 
@@ -346,9 +381,9 @@ else:
 
 
 # --------------------------------------------------
-# 10. Tabla de detalle
+# 11. Tabla de detalle
 # --------------------------------------------------
-st.markdown("## Detalle de contribuyentes y actividades")
+st.markdown("## Detalle de actividades")
 
 cols_tabla = []
 for c in [
@@ -377,4 +412,5 @@ if cols_tabla:
     )
 else:
     st.info("No se encontraron columnas suficientes para mostrar la tabla de detalle.")
+
 
