@@ -92,7 +92,7 @@ with col3:
 # 3. KPIs – SUMAS EXACTAS DEL EXCEL
 # --------------------------------------------------
 
-st.markdown("## 🔵 Suma total de valores del impuesto (Matriz técnica)")
+st.markdown("## 🔵 Proyección del Recaudo del impuesto de industria y comercio")
 
 imp_vig = safe_sum(df_base, COL_IMP_VIG_MAT)
 imp_prop2025 = safe_sum(df_base, COL_IMP_PROP2025_MAT)
@@ -113,7 +113,7 @@ k4.metric("Variación absoluta", f"${var_abs:,.0f}")
 # 4. KPIs – Impuesto del sistema + Recaudo real
 # --------------------------------------------------
 
-st.markdown("## 🟢 Impuesto según sistema + Recaudo")
+st.markdown("## 🟢 Proyección del Recaudo del impuesto de industria y comercio")
 
 imp_vig_sys = safe_sum(df_base, COL_IMP_VIG_SYS)
 imp_prop2025_sys = safe_sum(df_base, COL_IMP_PROP2025_SYS)
@@ -132,7 +132,7 @@ v4.metric("Recaudo Vigente (VALOR A PAGAR)", f"${recaudo_vig:,.0f}")
 # 5. Gráfico de impuestos
 # --------------------------------------------------
 
-st.markdown("## 📊 Impuesto total por escenario (matriz técnica)")
+st.markdown("## 📊 Impuesto total por escenario ")
 
 df_plot = pd.DataFrame({
     "Escenario": ["Vigente", "Propuesta 2025", "Propuesta anterior"],
@@ -149,7 +149,7 @@ st.plotly_chart(fig, use_container_width=True)
 # 6. Top actividades con mayor reducción
 # --------------------------------------------------
 
-st.markdown("## 🔻 Actividades con mayor reducción del impuesto (matriz)")
+st.markdown("## 🔻 Actividades con mayor reducción del impuesto ")
 
 df_var = df_base.copy()
 df_var["DIF_IMP_ABS"] = (
