@@ -89,7 +89,7 @@ with col3:
 
 
 # --------------------------------------------------
-# 3. KPIs – SUMAS EXACTAS DEL EXCEL
+# 3. KPIs – SUMAS EXACTAS DEL EXCEL (MATRIZ TÉCNICA)
 # --------------------------------------------------
 
 st.markdown("## 🔵 Proyección del Recaudo del impuesto de industria y comercio")
@@ -104,28 +104,37 @@ var_pct = (var_abs / imp_vig * 100) if imp_vig != 0 else 0
 k1, k2, k3, k4 = st.columns(4)
 
 k1.metric("Vigente", f"${imp_vig:,.0f}")
-k2.metric("Propuesta 2025", f"${imp_prop2025:,.0f}", delta=f"{var_pct:.2f}%", delta_color="inverse")
+# ❗ Aquí ya NO usamos delta_color="inverse", así que una disminución se ve en rojo
+k2.metric("Propuesta 2025", f"${imp_prop2025:,.0f}", delta=f"{var_pct:.2f}%")
 k3.metric("Propuesta anterior", f"${imp_propant:,.0f}")
 k4.metric("Variación absoluta", f"${var_abs:,.0f}")
 
 
 # --------------------------------------------------
-# 4. KPIs – Impuesto del sistema + Recaudo real
+# 4. KPIs – Impuesto del sistema + AUMENTO DEL RECAUDO
 # --------------------------------------------------
 
-st.markdown("## 🟢 Proyección del Recaudo del impuesto de industria y comercio")
+st.markdown("## 🟢 Proyección del Recaudo del impuesto de industria y comercio (sistema de información)")
 
 imp_vig_sys = safe_sum(df_base, COL_IMP_VIG_SYS)
 imp_prop2025_sys = safe_sum(df_base, COL_IMP_PROP2025_SYS)
 imp_propant_sys = safe_sum(df_base, COL_IMP_PROPANT_SYS)
-recaudo_vig = safe_sum(df_base, "VALOR A PAGAR")
 
-v1, v2, v3, v4 = st.columns(4)
+# ➕ cuánto aumentaría el recaudo con la propuesta 2025
+var_abs_sys = imp_prop2025_sys - imp_vig_sys
+var_pct_sys = (var_abs_sys / imp_vig_sys * 100) if imp_vig_sys != 0 else 0
+
+v1, v2, v3 = st.columns(3)
 
 v1.metric("Impuesto Vigente (sistema)", f"${imp_vig_sys:,.0f}")
-v2.metric("Propuesta 2025 (sistema)", f"${imp_prop2025_sys:,.0f}")
+v2.metric(
+    "Propuesta 2025 (sistema)",
+    f"${imp_prop2025_sys:,.0f}",
+    delta=f"{var_pct_sys:.2f}%",
+    help=f"Aumento del recaudo: ${var_abs_sys:,.0f}"
+)
 v3.metric("Propuesta anterior (sistema)", f"${imp_propant_sys:,.0f}")
-v4.metric("Recaudo Vigente (VALOR A PAGAR)", f"${recaudo_vig:,.0f}")
+# 👇 Ya NO mostramos 'Recaudo Vigente (VALOR A PAGAR)'
 
 
 # --------------------------------------------------
@@ -190,3 +199,4 @@ cols_table = [
 cols_presentes = [c for c in cols_table if c in df_base.columns]
 
 st.dataframe(df_base[cols_presentes], use_container_width=True)
+
